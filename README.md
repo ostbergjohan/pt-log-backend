@@ -14,7 +14,6 @@ It integrates with an **Oracle database** to persist projects, test executions, 
 - 📊 **Data retrieval** – fetch all tests for a given project
 - 🌍 **CORS enabled** – frontend (React) can interact seamlessly
 - 📖 **OpenAPI/Swagger** documentation via annotations
-- 📡 **Elastic APM** integration for monitoring
 
 ---
 
