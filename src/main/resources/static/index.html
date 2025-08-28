@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PT-Log API</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #f0f2f5;
+            color: #333;
+        }
+        header {
+            background: #4a90e2;
+            color: white;
+            padding: 2rem;
+            text-align: center;
+        }
+        main {
+            max-width: 800px;
+            margin: 2rem auto;
+            padding: 1rem 2rem;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            margin-top: 0;
+        }
+        a.button {
+            display: inline-block;
+            margin: 1rem 0;
+            padding: 0.75rem 1.5rem;
+            background: #4a90e2;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+        a.button:hover {
+            background: #357ABD;
+        }
+        ul {
+            line-height: 1.6;
+        }
+        footer {
+            text-align: center;
+            margin: 2rem 0;
+            font-size: 0.9rem;
+            color: #777;
+        }
+    </style>
+</head>
+<body>
+<header>
+    <h1>PT-Log API</h1>
+    <p>Manage and track test projects easily.</p>
+</header>
+<main>
+    <h2>Available Endpoints</h2>
+    <ul>
+        <li><strong>GET /healthcheck</strong> - Check API status.</li>
+        <li><strong>GET /getData?projekt={projekt}</strong> - Get all test logs for a project.</li>
+        <li><strong>GET /populate</strong> - List all project names.</li>
+        <li><strong>POST /createProject</strong> - Create a new project.</li>
+        <li><strong>POST /insert</strong> - Insert a new test log.</li>
+        <li><strong>PUT /updateAnalys</strong> - Update the ANALYS field for a test log.</li>
+    </ul>
+    <a class="button" href="/swagger-ui.html" target="_blank">View API Documentation</a>
+</main>
+<footer>
+    &copy; 2025 PT-Log
+</footer>
+</body>
+</html>

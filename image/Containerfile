@@ -1,0 +1,32 @@
+FROM registry.access.redhat.com/ubi9/openjdk-21
+
+# Switch to root for privileged operations
+USER root
+
+# Create a non-root user with UID 1001
+RUN useradd -u 1001 -r -g 0 -d /home/appuser -m -s /sbin/nologin -c "Non-root user" appuser
+
+# Combine installation, package update, forced removal of krb5-libs, and cleanup in one RUN command
+RUN mkdir -p /var/cache/yum && chmod -R 777 /var/cache/yum && \
+    microdnf install -y dnf && \
+    dnf update -y && \
+    dnf update -y libxml2 rsync freetype && \
+    dnf clean all && \
+    # Force removal of krb5-libs ignoring dependencies
+    rpm -e --nodeps krb5-libs || true && \
+    # Remove any socket files and then remove the entire yum cache directory
+    find /var/cache/yum -type s -delete || true && \
+    rm -rf /var/cache/yum
+
+COPY ./ptlog /app/ptlog/
+RUN chmod +x /app/ptlog/*
+
+# Switch to the non-root user
+USER appuser
+
+# Set working directory and expose port
+WORKDIR /app/ptlog/
+EXPOSE 8080
+
+# Run the application
+CMD ["java", "-Dspring.output.ansi.enabled=always", "-Dsun.stdout.encoding=UTF-8", "-classpath", "*", "se.ptlog.PtLog"]
