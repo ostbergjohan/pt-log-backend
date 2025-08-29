@@ -15,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.web.bind.annotation.*;
+import co.elastic.apm.attach.ElasticApmAttacher;
 
 import java.sql.*;
 import java.time.Instant;
@@ -48,6 +49,7 @@ public class PtLog {
 
     public static void main(String[] args) {
         SpringApplication.run(PtLog.class, args);
+        ElasticApmAttacher.attach();
     }
 
     // 🔹 Fetch DB connection info from application.properties
@@ -215,6 +217,7 @@ public class PtLog {
             case "Utmattningstest": testnamn = "UTM_" + testnamn; break;
             case "Maxtest":        testnamn = "MAX_" + testnamn; break;
             case "Skapa":          testnamn = "SKA_" + testnamn; break;
+            case "Verifikationstest":          testnamn = "VER_" + testnamn; break;
         }
 
         testnamn = counterStr + "_" + testnamn;
