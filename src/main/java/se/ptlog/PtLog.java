@@ -7,7 +7,6 @@ import io.swagger.v3.oas.annotations.OpenAPIDefinition;
 import io.swagger.v3.oas.annotations.info.Info;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.http.HttpHeaders;
@@ -17,27 +16,26 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.web.bind.annotation.*;
 import co.elastic.apm.attach.ElasticApmAttacher;
 
+import javax.sql.DataSource;
 import java.sql.*;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+
+import com.zaxxer.hikari.HikariDataSource;
 
 @OpenAPIDefinition(
         info = @Info(
                 title = "PT-Log",
                 version = "v1",
-                description = "The PT-Log API provides endpoints to manage and track tests for various projects.\n\n" +
+                description = "PT-Log API to manage and track tests.\n" +
                         "Endpoints:\n" +
-                        "1. **GET /healthcheck** - Checks if the API is running.\n" +
-                        "2. **GET /getData?projekt={projekt}** - Retrieves all test logs for the specified project.\n" +
-                        "3. **GET /populate** - Returns a list of all unique project names.\n" +
-                        "4. **POST /createProject** - Creates a new project. Requires JSON body: {\"Projekt\": \"ProjectName\"}.\n" +
-                        "5. **POST /insert** - Inserts a new test log. Requires JSON body with fields: Datum (ISO 8601), Typ, Testnamn, Syfte, Projekt, Testare.\n" +
-                        "6. **PUT /updateAnalys** - Updates the ANALYS column for a given project and test name. Requires JSON body: {\"Projekt\": \"...\", \"Testnamn\": \"...\", \"Analys\": \"...\"}.\n\n" +
-                        "Note: This API connects to an Oracle database. Ensure proper credentials and network access.\n" +
-                        "Data persistence is real (stored in Oracle), but test logs and projects are managed via this API."
+                        "1. **GET /healthcheck** - API health.\n" +
+                        "2. **GET /getData?projekt={projekt}** - Retrieve logs.\n" +
+                        "3. **GET /populate** - List projects.\n" +
+                        "4. **POST /createProject** - Create project.\n" +
+                        "5. **POST /insert** - Insert test log.\n" +
+                        "6. **PUT /updateAnalys** - Update analysis.\n" +
+                        "7. **GET /dbpool** - DB connection pool stats.\n"
         )
 )
 @SpringBootApplication(scanBasePackages = "se.ptlog")
@@ -46,29 +44,24 @@ import java.util.Map;
 public class PtLog {
 
     private static final Logger logger = LoggerFactory.getLogger(PtLog.class);
+    private final DataSource dataSource;
+
+    // ✅ Constructor injection ensures dataSource is not null
+    public PtLog(DataSource dataSource) {
+        this.dataSource = dataSource;
+    }
 
     public static void main(String[] args) {
         SpringApplication.run(PtLog.class, args);
         ElasticApmAttacher.attach();
     }
 
-    // 🔹 Fetch DB connection info from application.properties
-    @Value("${spring.datasource.url}")
-    private String jdbcUrl;
-
-    @Value("${spring.datasource.username}")
-    private String username;
-
-    @Value("${spring.datasource.password}")
-    private String password;
-
     @CrossOrigin(origins = "*")
-    @GetMapping(value = "healthcheck")
+    @GetMapping("healthcheck")
     public ResponseEntity<String> healthcheck() {
         HttpHeaders headers = new HttpHeaders();
         headers.add(HttpHeaders.CACHE_CONTROL, "no-cache");
-        headers.add(HttpHeaders.CONTENT_TYPE, "text/plain; charset=UTF-8");
-        headers.add(HttpHeaders.CONTENT_ENCODING, "UTF-8");
+        headers.add(HttpHeaders.CONTENT_TYPE, "application/json; charset=UTF-8");
         return ResponseEntity.ok()
                 .headers(headers)
                 .body("{\"status\":\"ok\",\"service\":\"API Health Check\"}");
@@ -77,38 +70,32 @@ public class PtLog {
     @CrossOrigin(origins = "*")
     @GetMapping("/getData")
     public List<Map<String, Object>> getData(@RequestParam String projekt) throws SQLException {
-
         String sql = "SELECT " +
                 "TO_CHAR(DATUM, 'YYYY-MM-DD HH24:MI') AS DATUM, " +
-                "TYP, " +
-                "TESTNAMN, " +
-                "SYFTE, " +
-                "ANALYS, " +
-                "PROJEKT, " +
-                "TESTARE " +
-                "FROM ptlog " +
-                "WHERE PROJEKT = '" + projekt + "' " +
-                "ORDER BY DATUM";
-
-        return OraSQL(sql);
+                "TYP, TESTNAMN, SYFTE, ANALYS, PROJEKT, TESTARE " +
+                "FROM ptlog WHERE PROJEKT = ? ORDER BY DATUM";
+        return OraSQL(sql, projekt);
     }
 
-    public List<Map<String, Object>> OraSQL(String query) throws SQLException {
+    public List<Map<String, Object>> OraSQL(String query, String... params) throws SQLException {
         List<Map<String, Object>> resultList = new ArrayList<>();
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement st = conn.prepareStatement(query)) {
 
-        try (Connection conn = DriverManager.getConnection(jdbcUrl, username, password);
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery(query)) {
+            for (int i = 0; i < params.length; i++) {
+                st.setString(i + 1, params[i]);
+            }
 
-            ResultSetMetaData rsmd = rs.getMetaData();
-            int colCount = rsmd.getColumnCount();
-
-            while (rs.next()) {
-                Map<String, Object> row = new LinkedHashMap<>();
-                for (int i = 1; i <= colCount; i++) {
-                    row.put(rsmd.getColumnName(i), rs.getObject(i));
+            try (ResultSet rs = st.executeQuery()) {
+                ResultSetMetaData rsmd = rs.getMetaData();
+                int colCount = rsmd.getColumnCount();
+                while (rs.next()) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    for (int i = 1; i <= colCount; i++) {
+                        row.put(rsmd.getColumnName(i), rs.getObject(i));
+                    }
+                    resultList.add(row);
                 }
-                resultList.add(row);
             }
         }
         return resultList;
@@ -119,37 +106,54 @@ public class PtLog {
     public List<String> getAllProjekts() throws SQLException {
         String sql = "SELECT DISTINCT NAMN FROM PTLOG_PROJEKT ORDER BY NAMN";
         List<String> projekts = new ArrayList<>();
-
-        try (Connection conn = DriverManager.getConnection(jdbcUrl, username, password);
+        try (Connection conn = dataSource.getConnection();
              Statement st = conn.createStatement();
              ResultSet rs = st.executeQuery(sql)) {
-
             while (rs.next()) {
                 projekts.add(rs.getString("NAMN"));
             }
         }
-
         return projekts;
     }
 
     @CrossOrigin(origins = "*")
-    @PostMapping("/createProject")
-    public ResponseEntity<String> createProject(@RequestBody Map<String, String> payload) {
-
+    @DeleteMapping("/deleteProject")
+    public ResponseEntity<String> deleteProject(@RequestBody Map<String, String> payload) {
         String projektName = payload.get("Projekt");
         if (projektName == null || projektName.trim().isEmpty()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body("Projekt name is required");
         }
 
-        String sql = "INSERT INTO PTLOG_PROJEKT (NAMN) VALUES (?)";
+        String deletePTLOGSql = "DELETE FROM PTLOG WHERE PROJEKT = ?";
+        String deleteProjektSql = "DELETE FROM PTLOG_PROJEKT WHERE NAMN = ?";
 
-        try (Connection conn = DriverManager.getConnection(jdbcUrl, username, password);
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+        try (Connection conn = dataSource.getConnection()) {
+            // Use transaction
+            conn.setAutoCommit(false);
 
-            stmt.setString(1, projektName.trim());
-            int rows = stmt.executeUpdate();
-            return ResponseEntity.ok("Inserted project: " + projektName + " (" + rows + " row(s))");
+            int deletedRowsPTLOG;
+            try (PreparedStatement stmt = conn.prepareStatement(deletePTLOGSql)) {
+                stmt.setString(1, projektName.trim());
+                deletedRowsPTLOG = stmt.executeUpdate();
+            }
+
+            int deletedRowsProjekt;
+            try (PreparedStatement stmt = conn.prepareStatement(deleteProjektSql)) {
+                stmt.setString(1, projektName.trim());
+                deletedRowsProjekt = stmt.executeUpdate();
+            }
+
+            conn.commit();
+
+            if (deletedRowsProjekt == 0) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body("No project found with name: " + projektName);
+            }
+
+            return ResponseEntity.ok("Deleted project: " + projektName +
+                    " (" + deletedRowsProjekt + " row(s)) and " +
+                    deletedRowsPTLOG + " associated PTLOG row(s)");
 
         } catch (SQLException e) {
             e.printStackTrace();
@@ -158,9 +162,32 @@ public class PtLog {
         }
     }
 
+
+    @CrossOrigin(origins = "*")
+    @PostMapping("/createProject")
+    public ResponseEntity<String> createProject(@RequestBody Map<String, String> payload) {
+        String projektName = payload.get("Projekt");
+        if (projektName == null || projektName.trim().isEmpty()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Projekt name is required");
+        }
+
+        String sql = "INSERT INTO PTLOG_PROJEKT (NAMN) VALUES (?)";
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, projektName.trim());
+            int rows = stmt.executeUpdate();
+            return ResponseEntity.ok("Inserted project: " + projektName + " (" + rows + " row(s))");
+        } catch (SQLException e) {
+            logger.error("Database error", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Database error: " + e.getMessage());
+        }
+    }
+
     public int countRowsForProject(String projekt) throws SQLException {
         String sql = "SELECT COUNT(*) AS CNT FROM ptlog WHERE PROJEKT = ?";
-        try (Connection conn = DriverManager.getConnection(jdbcUrl, username, password);
+        try (Connection conn = dataSource.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, projekt);
             try (ResultSet rs = ps.executeQuery()) {
@@ -175,15 +202,12 @@ public class PtLog {
     @CrossOrigin(origins = "*")
     @PostMapping("/insert")
     public ResponseEntity<String> insertLog(@RequestBody String json) {
-
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode node;
-
         try {
             node = objectMapper.readTree(json);
         } catch (JsonProcessingException e) {
-            return ResponseEntity
-                    .status(HttpStatus.BAD_REQUEST)
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body("Invalid JSON: " + e.getOriginalMessage());
         }
 
@@ -196,12 +220,11 @@ public class PtLog {
             projekt = getRequiredField(node, "Projekt");
             testare = getRequiredField(node, "Testare");
         } catch (IllegalArgumentException e) {
-            return ResponseEntity
-                    .status(HttpStatus.BAD_REQUEST)
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body("Missing required field: " + e.getMessage());
         }
 
-        int count = 0;
+        int count;
         try {
             count = countRowsForProject(projekt);
         } catch (SQLException e) {
@@ -210,23 +233,19 @@ public class PtLog {
         }
 
         String counterStr = String.format("%02d", count + 1);
-
         switch (typ) {
             case "Referenstest":   testnamn = "REF_" + testnamn; break;
             case "Belastningstest": testnamn = "BEL_" + testnamn; break;
             case "Utmattningstest": testnamn = "UTM_" + testnamn; break;
             case "Maxtest":        testnamn = "MAX_" + testnamn; break;
             case "Skapa":          testnamn = "SKA_" + testnamn; break;
-            case "Verifikationstest":          testnamn = "VER_" + testnamn; break;
+            case "Verifikationstest": testnamn = "VER_" + testnamn; break;
         }
-
         testnamn = counterStr + "_" + testnamn;
 
         String sql = "INSERT INTO PTLOG (DATUM, TYP, TESTNAMN, SYFTE, PROJEKT, TESTARE) VALUES (?, ?, ?, ?, ?, ?)";
-
-        try (Connection conn = DriverManager.getConnection(jdbcUrl, username, password);
+        try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
-
             stmt.setTimestamp(1, Timestamp.from(Instant.parse(datum)));
             stmt.setString(2, typ);
             stmt.setString(3, testnamn);
@@ -236,7 +255,57 @@ public class PtLog {
 
             int rows = stmt.executeUpdate();
             return ResponseEntity.ok("Inserted " + rows + " row(s) with testnamn: " + testnamn);
+        } catch (SQLException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Database error: " + e.getMessage());
+        }
+    }
 
+    @CrossOrigin(origins = "*")
+    @PostMapping("/addKonfig")
+    public ResponseEntity<String> addKonfig(@RequestBody String json) {
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode node;
+        try {
+            node = objectMapper.readTree(json);
+        } catch (JsonProcessingException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Invalid JSON: " + e.getOriginalMessage());
+        }
+
+        String projekt, testnamn, reqH, reqS, vu, pacing, skript, testare;
+        try {
+            projekt = getRequiredField(node, "PROJEKT");
+            testnamn = node.get("TESTNAMN").asText();
+            reqH = node.get("REQH").asText();
+            reqS = node.get("REQS").asText();
+            vu = node.get("VU").asText();
+            pacing = node.get("PACING").asText();
+            skript = node.has("SKRIPT") ? node.get("SKRIPT").asText() : "";
+            testare = node.has("TESTARE") ? node.get("TESTARE").asText() : "";
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Missing required fields: " + e.getMessage());
+        }
+
+        // Format KONFIG data for ANALYS field
+        String analys = String.format("ReqH: %s | ReqS: %s | VU: %s | Pacing: %s | Skript: %s",
+                reqH, reqS, vu, pacing, skript);
+
+        String sql = "INSERT INTO PTLOG (DATUM, TYP, TESTNAMN, SYFTE, ANALYS, PROJEKT, TESTARE) VALUES (?, ?, ?, ?, ?, ?, ?)";
+
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setTimestamp(1, new Timestamp(System.currentTimeMillis()));
+            stmt.setString(2, "KONFIG");
+            stmt.setString(3, testnamn);
+            stmt.setString(4, "Konfig");  // Changed from "" to "Konfig"
+            stmt.setString(5, analys);
+            stmt.setString(6, projekt);
+            stmt.setString(7, testare);
+
+            stmt.executeUpdate();
+            return ResponseEntity.ok("KONFIG added successfully");
         } catch (SQLException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Database error: " + e.getMessage());
@@ -246,15 +315,12 @@ public class PtLog {
     @CrossOrigin(origins = "*")
     @PutMapping("/updateAnalys")
     public ResponseEntity<String> updateAnalys(@RequestBody String json) {
-
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode node;
-
         try {
             node = objectMapper.readTree(json);
         } catch (JsonProcessingException e) {
-            return ResponseEntity
-                    .status(HttpStatus.BAD_REQUEST)
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body("Invalid JSON: " + e.getOriginalMessage());
         }
 
@@ -264,33 +330,84 @@ public class PtLog {
             testnamn = getRequiredField(node, "Testnamn");
             analys = getRequiredField(node, "Analys");
         } catch (IllegalArgumentException e) {
-            return ResponseEntity
-                    .status(HttpStatus.BAD_REQUEST)
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body("Missing required field: " + e.getMessage());
         }
 
         String sql = "UPDATE PTLOG SET ANALYS = ? WHERE PROJEKT = ? AND TESTNAMN = ?";
-
-        try (Connection conn = DriverManager.getConnection(jdbcUrl, username, password);
+        try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
-
             stmt.setString(1, analys);
             stmt.setString(2, projekt);
             stmt.setString(3, testnamn);
 
             int rows = stmt.executeUpdate();
-
             if (rows == 0) {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND)
                         .body("No row found with Projekt: " + projekt + " and Testnamn: " + testnamn);
             }
-
-            return ResponseEntity.ok("Updated " + rows + " row(s) for Projekt: " + projekt + ", Testnamn: " + testnamn);
-
+            return ResponseEntity.ok("Updated " + rows + " row(s)");
         } catch (SQLException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Database error: " + e.getMessage());
         }
+    }
+
+    @CrossOrigin(origins = "*", methods = {RequestMethod.DELETE, RequestMethod.OPTIONS})
+    @DeleteMapping("/deleteTest")
+    public ResponseEntity<String> deleteTest(@RequestBody String json) {
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode node;
+        try {
+            node = objectMapper.readTree(json);
+        } catch (JsonProcessingException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Invalid JSON: " + e.getOriginalMessage());
+        }
+
+        String projekt, testnamn;
+        try {
+            projekt = getRequiredField(node, "Projekt");
+            testnamn = getRequiredField(node, "Testnamn");
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Missing required field: " + e.getMessage());
+        }
+
+        String sql = "DELETE FROM PTLOG WHERE PROJEKT = ? AND TESTNAMN = ?";
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, projekt);
+            stmt.setString(2, testnamn);
+
+            int rows = stmt.executeUpdate();
+            if (rows == 0) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body("No test found with Projekt: " + projekt + " and Testnamn: " + testnamn);
+            }
+            return ResponseEntity.ok("Deleted " + rows + " test(s)");
+        } catch (SQLException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Database error: " + e.getMessage());
+        }
+    }
+
+    // ✅ Pool monitoring endpoint
+    @CrossOrigin(origins = "*")
+    @GetMapping("/dbpool")
+    public Map<String, Object> dbPoolStats() {
+        Map<String, Object> stats = new LinkedHashMap<>();
+        if (dataSource instanceof HikariDataSource) {
+            HikariDataSource hikari = (HikariDataSource) dataSource;
+            stats.put("active", hikari.getHikariPoolMXBean().getActiveConnections());
+            stats.put("idle", hikari.getHikariPoolMXBean().getIdleConnections());
+            stats.put("waiting", hikari.getHikariPoolMXBean().getThreadsAwaitingConnection());
+            stats.put("total", hikari.getHikariPoolMXBean().getTotalConnections());
+            stats.put("maxPoolSize", hikari.getMaximumPoolSize());
+        } else {
+            stats.put("error", "Not a HikariDataSource");
+        }
+        return stats;
     }
 
     private String getRequiredField(JsonNode node, String fieldName) {
@@ -300,9 +417,9 @@ public class PtLog {
         return node.get(fieldName).asText();
     }
 
+    // ANSI colored logger (optional)
     public class ColorLogger {
         private static final Logger LOGGER = LoggerFactory.getLogger("");
-
         public void logDebug(String logging) { LOGGER.debug("\u001B[92m" + logging + "\u001B[0m"); }
         public void logInfo(String logging) { LOGGER.info("\u001B[93m" + logging + "\u001B[0m"); }
         public void logError(String logging) { LOGGER.error("\u001B[91m" + logging + "\u001B[0m"); }
