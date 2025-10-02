@@ -8,7 +8,6 @@ It uses an Oracle database with connection pooling via **HikariCP** and includes
 ## 🚀 Features
 - REST API for test project and log management
 - Database-backed with transaction support
-- Elastic APM integration (`co.elastic.apm.attach.ElasticApmAttacher`)
 - OpenAPI/Swagger annotations
 - HikariCP database pool monitoring
 - Built-in CORS support
