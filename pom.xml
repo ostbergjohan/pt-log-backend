@@ -29,6 +29,19 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+        <!-- JDBC support (auto-configures DataSource + HikariCP) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+
+        <!-- Oracle JDBC (Java 21 compatible) -->
+        <dependency>
+            <groupId>com.oracle.database.jdbc</groupId>
+            <artifactId>ojdbc11</artifactId>
+            <version>23.4.0.24.05</version>
+        </dependency>
+
         <!-- Springdoc OpenAPI for Swagger UI integration -->
         <dependency>
             <groupId>org.springdoc</groupId>
@@ -36,10 +49,23 @@
             <version>2.6.0</version>
         </dependency>
 
+        <!-- Elastic APM -->
         <dependency>
-            <groupId>com.oracle.database.jdbc</groupId>
-            <artifactId>ojdbc8</artifactId>
-            <version>19.3.0.0</version>
+            <groupId>co.elastic.apm</groupId>
+            <artifactId>apm-agent-attach</artifactId>
+            <version>1.55.0</version>
+        </dependency>
+        <dependency>
+            <groupId>co.elastic.apm</groupId>
+            <artifactId>elastic-apm-agent</artifactId>
+            <version>1.55.0</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Actuator (for metrics/health) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
         <!-- Spring Boot Starter Test (for testing) -->
@@ -48,8 +74,6 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
-
-
     </dependencies>
 
 
