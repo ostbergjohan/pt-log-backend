@@ -51,6 +51,8 @@ public class PtLog {
         this.dataSource = dataSource;
     }
 
+
+
     public static void main(String[] args) {
         SpringApplication.run(PtLog.class, args);
         ElasticApmAttacher.attach();
@@ -73,7 +75,7 @@ public class PtLog {
         String sql = "SELECT " +
                 "TO_CHAR(DATUM, 'YYYY-MM-DD HH24:MI') AS DATUM, " +
                 "TYP, TESTNAMN, SYFTE, ANALYS, PROJEKT, TESTARE " +
-                "FROM ptlog WHERE PROJEKT = ? ORDER BY DATUM";
+                "FROM ptlog WHERE PROJEKT = ? ORDER BY DATUM DESC";
         return OraSQL(sql, projekt);
     }
 
@@ -243,6 +245,8 @@ public class PtLog {
         }
         testnamn = counterStr + "_" + testnamn;
 
+        TimeZone.setDefault(TimeZone.getTimeZone("Europe/Stockholm"));
+
         String sql = "INSERT INTO PTLOG (DATUM, TYP, TESTNAMN, SYFTE, PROJEKT, TESTARE) VALUES (?, ?, ?, ?, ?, ?)";
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -294,6 +298,8 @@ public class PtLog {
 
         String sql = "INSERT INTO PTLOG (DATUM, TYP, TESTNAMN, SYFTE, ANALYS, PROJEKT, TESTARE) VALUES (?, ?, ?, ?, ?, ?, ?)";
 
+        TimeZone.setDefault(TimeZone.getTimeZone("Europe/Stockholm"));
+
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setTimestamp(1, new Timestamp(System.currentTimeMillis()));
@@ -306,6 +312,49 @@ public class PtLog {
 
             stmt.executeUpdate();
             return ResponseEntity.ok("KONFIG added successfully");
+        } catch (SQLException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Database error: " + e.getMessage());
+        }
+    }
+
+    @CrossOrigin(origins = "*")
+    @PostMapping("/addGenerellKonfig")
+    public ResponseEntity<String> addGenerellKonfig(@RequestBody String json) {
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode node;
+        try {
+            node = objectMapper.readTree(json);
+        } catch (JsonProcessingException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Invalid JSON: " + e.getOriginalMessage());
+        }
+
+        String projekt, beskrivning, testare;
+        try {
+            projekt = getRequiredField(node, "PROJEKT");
+            beskrivning = getRequiredField(node, "BESKRIVNING");
+            testare = node.has("TESTARE") ? node.get("TESTARE").asText() : "";
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Missing required fields: " + e.getMessage());
+        }
+        TimeZone.setDefault(TimeZone.getTimeZone("Europe/Stockholm"));
+        
+        String sql = "INSERT INTO PTLOG (DATUM, TYP, TESTNAMN, SYFTE, ANALYS, PROJEKT, TESTARE) VALUES (?, ?, ?, ?, ?, ?, ?)";
+
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setTimestamp(1, new Timestamp(System.currentTimeMillis()));
+            stmt.setString(2, "KONFIG");
+            stmt.setString(3, "GENERELL");
+            stmt.setString(4, "Generell Konfig");
+            stmt.setString(5, beskrivning);
+            stmt.setString(6, projekt);
+            stmt.setString(7, testare);
+
+            stmt.executeUpdate();
+            return ResponseEntity.ok("Generell KONFIG added successfully");
         } catch (SQLException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Database error: " + e.getMessage());
