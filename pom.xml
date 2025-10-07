@@ -42,6 +42,13 @@
             <version>23.4.0.24.05</version>
         </dependency>
 
+        <!-- H2 Database (File-based, embedded) -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <version>2.2.224</version>
+        </dependency>
+
         <!-- Springdoc OpenAPI for Swagger UI integration -->
         <dependency>
             <groupId>org.springdoc</groupId>
