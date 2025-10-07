@@ -14,7 +14,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.web.bind.annotation.*;
-import co.elastic.apm.attach.ElasticApmAttacher;
 
 import javax.sql.DataSource;
 import java.sql.*;
@@ -35,7 +34,11 @@ import com.zaxxer.hikari.HikariDataSource;
                         "4. **POST /createProject** - Create project.\n" +
                         "5. **POST /insert** - Insert test log.\n" +
                         "6. **PUT /updateAnalys** - Update analysis.\n" +
-                        "7. **GET /dbpool** - DB connection pool stats.\n"
+                        "7. **POST /addKonfig** - Add pacing configuration.\n" +
+                        "8. **POST /addGenerellKonfig** - Add general configuration.\n" +
+                        "9. **DELETE /deleteProject** - Delete project and all its tests.\n" +
+                        "10. **DELETE /deleteTest** - Delete specific test.\n" +
+                        "11. **GET /dbpool** - DB connection pool stats.\n"
         )
 )
 @SpringBootApplication(scanBasePackages = "se.ptlog")
@@ -51,11 +54,8 @@ public class PtLog {
         this.dataSource = dataSource;
     }
 
-
-
     public static void main(String[] args) {
         SpringApplication.run(PtLog.class, args);
-        ElasticApmAttacher.attach();
     }
 
     @CrossOrigin(origins = "*")
@@ -164,7 +164,6 @@ public class PtLog {
         }
     }
 
-
     @CrossOrigin(origins = "*")
     @PostMapping("/createProject")
     public ResponseEntity<String> createProject(@RequestBody Map<String, String> payload) {
@@ -194,10 +193,13 @@ public class PtLog {
             ps.setString(1, projekt);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
-                    return rs.getInt("CNT");
+                    int count = rs.getInt("CNT");
+                    logger.info("Project '{}' has {} existing rows", projekt, count);
+                    return count;
                 }
             }
         }
+        logger.info("Project '{}' has 0 rows", projekt);
         return 0;
     }
 
@@ -258,8 +260,10 @@ public class PtLog {
             stmt.setString(6, testare);
 
             int rows = stmt.executeUpdate();
+            logger.info("Inserted test: {} for project: {}", testnamn, projekt);
             return ResponseEntity.ok("Inserted " + rows + " row(s) with testnamn: " + testnamn);
         } catch (SQLException e) {
+            logger.error("Failed to insert test: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Database error: " + e.getMessage());
         }
@@ -277,10 +281,9 @@ public class PtLog {
                     .body("Invalid JSON: " + e.getOriginalMessage());
         }
 
-        String projekt, testnamn, reqH, reqS, vu, pacing, skript, testare;
+        String projekt, reqH, reqS, vu, pacing, skript, testare;
         try {
             projekt = getRequiredField(node, "PROJEKT");
-            testnamn = node.get("TESTNAMN").asText();
             reqH = node.get("REQH").asText();
             reqS = node.get("REQS").asText();
             vu = node.get("VU").asText();
@@ -291,6 +294,18 @@ public class PtLog {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body("Missing required fields: " + e.getMessage());
         }
+
+        // Get counter for this project
+        int count;
+        try {
+            count = countRowsForProject(projekt);
+        } catch (SQLException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Failed to count rows: " + e.getMessage());
+        }
+
+        String counterStr = String.format("%02d", count + 1);
+        String testnamn = counterStr + "_PAC_Konfig";
 
         // Format KONFIG data for ANALYS field
         String analys = String.format("ReqH: %s | ReqS: %s | VU: %s | Pacing: %s | Skript: %s",
@@ -305,14 +320,16 @@ public class PtLog {
             stmt.setTimestamp(1, new Timestamp(System.currentTimeMillis()));
             stmt.setString(2, "KONFIG");
             stmt.setString(3, testnamn);
-            stmt.setString(4, "Konfig");  // Changed from "" to "Konfig"
+            stmt.setString(4, "Konfig");
             stmt.setString(5, analys);
             stmt.setString(6, projekt);
             stmt.setString(7, testare);
 
             stmt.executeUpdate();
-            return ResponseEntity.ok("KONFIG added successfully");
+            logger.info("Inserted KONFIG: {} for project: {}", testnamn, projekt);
+            return ResponseEntity.ok("KONFIG added successfully with testnamn: " + testnamn);
         } catch (SQLException e) {
+            logger.error("Failed to insert KONFIG: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Database error: " + e.getMessage());
         }
@@ -339,23 +356,38 @@ public class PtLog {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body("Missing required fields: " + e.getMessage());
         }
+
+        // Get counter for this project
+        int count;
+        try {
+            count = countRowsForProject(projekt);
+        } catch (SQLException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Failed to count rows: " + e.getMessage());
+        }
+
+        String counterStr = String.format("%02d", count + 1);
+        String testnamn = counterStr + "_GEN_Konfig";
+
         TimeZone.setDefault(TimeZone.getTimeZone("Europe/Stockholm"));
-        
+
         String sql = "INSERT INTO PTLOG (DATUM, TYP, TESTNAMN, SYFTE, ANALYS, PROJEKT, TESTARE) VALUES (?, ?, ?, ?, ?, ?, ?)";
 
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setTimestamp(1, new Timestamp(System.currentTimeMillis()));
             stmt.setString(2, "KONFIG");
-            stmt.setString(3, "GENERELL");
+            stmt.setString(3, testnamn);
             stmt.setString(4, "Generell Konfig");
             stmt.setString(5, beskrivning);
             stmt.setString(6, projekt);
             stmt.setString(7, testare);
 
             stmt.executeUpdate();
-            return ResponseEntity.ok("Generell KONFIG added successfully");
+            logger.info("Inserted Generell KONFIG: {} for project: {}", testnamn, projekt);
+            return ResponseEntity.ok("Generell KONFIG added successfully with testnamn: " + testnamn);
         } catch (SQLException e) {
+            logger.error("Failed to insert Generell KONFIG: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Database error: " + e.getMessage());
         }
@@ -395,8 +427,10 @@ public class PtLog {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND)
                         .body("No row found with Projekt: " + projekt + " and Testnamn: " + testnamn);
             }
+            logger.info("Updated analysis for test: {} in project: {}", testnamn, projekt);
             return ResponseEntity.ok("Updated " + rows + " row(s)");
         } catch (SQLException e) {
+            logger.error("Failed to update analysis: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Database error: " + e.getMessage());
         }
@@ -434,8 +468,10 @@ public class PtLog {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND)
                         .body("No test found with Projekt: " + projekt + " and Testnamn: " + testnamn);
             }
+            logger.info("Deleted test: {} from project: {}", testnamn, projekt);
             return ResponseEntity.ok("Deleted " + rows + " test(s)");
         } catch (SQLException e) {
+            logger.error("Failed to delete test: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Database error: " + e.getMessage());
         }

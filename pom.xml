@@ -49,18 +49,6 @@
             <version>2.6.0</version>
         </dependency>
 
-        <!-- Elastic APM -->
-        <dependency>
-            <groupId>co.elastic.apm</groupId>
-            <artifactId>apm-agent-attach</artifactId>
-            <version>1.55.0</version>
-        </dependency>
-        <dependency>
-            <groupId>co.elastic.apm</groupId>
-            <artifactId>elastic-apm-agent</artifactId>
-            <version>1.55.0</version>
-            <scope>runtime</scope>
-        </dependency>
 
         <!-- Actuator (for metrics/health) -->
         <dependency>
