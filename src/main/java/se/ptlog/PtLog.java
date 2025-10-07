@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -41,7 +42,10 @@ import com.zaxxer.hikari.HikariDataSource;
                         "11. **GET /dbpool** - DB connection pool stats.\n"
         )
 )
-@SpringBootApplication(scanBasePackages = "se.ptlog")
+@SpringBootApplication(
+        scanBasePackages = "se.ptlog",
+        exclude = {DataSourceAutoConfiguration.class}  // Disable auto-config, use our DatabaseConfig
+)
 @RestController
 @EnableScheduling
 public class PtLog {
@@ -52,6 +56,7 @@ public class PtLog {
     // ✅ Constructor injection ensures dataSource is not null
     public PtLog(DataSource dataSource) {
         this.dataSource = dataSource;
+        logger.info("🚀 PtLog initialized with DataSource: {}", dataSource.getClass().getName());
     }
 
     public static void main(String[] args) {
@@ -94,7 +99,15 @@ public class PtLog {
                 while (rs.next()) {
                     Map<String, Object> row = new LinkedHashMap<>();
                     for (int i = 1; i <= colCount; i++) {
-                        row.put(rsmd.getColumnName(i), rs.getObject(i));
+                        Object value = rs.getObject(i);
+
+                        // Convert CLOB to String for JSON serialization (H2 compatibility)
+                        if (value instanceof java.sql.Clob) {
+                            java.sql.Clob clob = (java.sql.Clob) value;
+                            value = clob.getSubString(1, (int) clob.length());
+                        }
+
+                        row.put(rsmd.getColumnName(i), value);
                     }
                     resultList.add(row);
                 }

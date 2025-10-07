@@ -9,7 +9,7 @@
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
         <version>3.4.4</version>
-        <relativePath/> <!-- lookup parent from repository -->
+        <relativePath/>
     </parent>
 
     <groupId>se.playground</groupId>
@@ -19,10 +19,18 @@
     <description>playground</description>
 
     <properties>
-        <java.version>21</java.version> <!-- Java version set to 21 -->
+        <java.version>21</java.version>
+        <start-class>se.ptlog.PtLog</start-class>
     </properties>
 
     <dependencies>
+        <!-- H2 Database -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <version>2.2.224</version>
+        </dependency>
+
         <!-- Spring Boot Starter Web (for REST controllers) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -42,13 +50,6 @@
             <version>23.4.0.24.05</version>
         </dependency>
 
-        <!-- H2 Database (File-based, embedded) -->
-        <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
-            <version>2.2.224</version>
-        </dependency>
-
         <!-- Springdoc OpenAPI for Swagger UI integration -->
         <dependency>
             <groupId>org.springdoc</groupId>
@@ -56,6 +57,18 @@
             <version>2.6.0</version>
         </dependency>
 
+        <!-- Elastic APM -->
+        <dependency>
+            <groupId>co.elastic.apm</groupId>
+            <artifactId>apm-agent-attach</artifactId>
+            <version>1.55.0</version>
+        </dependency>
+        <dependency>
+            <groupId>co.elastic.apm</groupId>
+            <artifactId>elastic-apm-agent</artifactId>
+            <version>1.55.0</version>
+            <scope>runtime</scope>
+        </dependency>
 
         <!-- Actuator (for metrics/health) -->
         <dependency>
@@ -71,13 +84,15 @@
         </dependency>
     </dependencies>
 
-
     <build>
         <plugins>
             <!-- Spring Boot Maven Plugin -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <mainClass>se.ptlog.PtLog</mainClass>
+                </configuration>
             </plugin>
 
             <!-- Maven Compiler Plugin to ensure Java 21 compatibility -->
