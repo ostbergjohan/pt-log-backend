@@ -467,22 +467,6 @@ OpenAPI documentation is available at:
 
 ---
 
-## 📞 Support
-
-For issues or questions:
-- Create an issue in the repository
-- Check logs: `docker logs ptlog`
-- View connection pool: `curl http://localhost:8080/dbpool`
-- Contact the development team
-
----
-
-## 📄 License
-
-[Your License Here]
-
----
-
 ## 🎯 Quick Start Guide
 
 ### Development (H2)
