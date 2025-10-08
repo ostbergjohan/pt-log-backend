@@ -250,15 +250,8 @@ public class PtLog {
         }
 
         String counterStr = String.format("%02d", count + 1);
-        switch (typ) {
-            case "Referenstest":   testnamn = "REF_" + testnamn; break;
-            case "Belastningstest": testnamn = "BEL_" + testnamn; break;
-            case "Utmattningstest": testnamn = "UTM_" + testnamn; break;
-            case "Maxtest":        testnamn = "MAX_" + testnamn; break;
-            case "Skapa":          testnamn = "SKA_" + testnamn; break;
-            case "Verifikationstest": testnamn = "VER_" + testnamn; break;
-        }
-        testnamn = counterStr + "_" + testnamn;
+        String prefix = getTestTypePrefix(typ);
+        testnamn = counterStr + "_" + prefix + "_" + testnamn;
 
         TimeZone.setDefault(TimeZone.getTimeZone("Europe/Stockholm"));
 
@@ -282,6 +275,33 @@ public class PtLog {
         }
     }
 
+    private String getTestTypePrefix(String typ) {
+        // Support both English keys and Swedish full names
+        switch (typ.toLowerCase()) {
+            case "reference":
+            case "referenstest":
+                return "REF";
+            case "verification":
+            case "verifikationstest":
+                return "VER";
+            case "load":
+            case "belastningstest":
+                return "BEL";
+            case "endurance":
+            case "utmattningstest":
+                return "UTM";
+            case "max":
+            case "maxtest":
+                return "MAX";
+            case "create":
+            case "skapa":
+                return "SKA";
+            default:
+                logger.warn("Unknown test type: {}, defaulting to REF", typ);
+                return "REF";
+        }
+    }
+
     @CrossOrigin(origins = "*")
     @PostMapping("/addKonfig")
     public ResponseEntity<String> addKonfig(@RequestBody String json) {
@@ -294,9 +314,10 @@ public class PtLog {
                     .body("Invalid JSON: " + e.getOriginalMessage());
         }
 
-        String projekt, reqH, reqS, vu, pacing, skript, testare;
+        String projekt, reqH, reqS, vu, pacing, skript, testare, testnamn;
         try {
             projekt = getRequiredField(node, "PROJEKT");
+            testnamn = node.has("TESTNAMN") ? node.get("TESTNAMN").asText() : "PACING";
             reqH = node.get("REQH").asText();
             reqS = node.get("REQS").asText();
             vu = node.get("VU").asText();
@@ -318,11 +339,18 @@ public class PtLog {
         }
 
         String counterStr = String.format("%02d", count + 1);
-        String testnamn = counterStr + "_PAC_Konfig";
+        // Determine config type based on testnamn (PACING stays as PACING, others default to PAC)
+        String configType = testnamn.equalsIgnoreCase("PACING") ? "PAC" : "PAC";
+        String finalTestnamn = counterStr + "_" + configType + "_" +
+                (testnamn.equalsIgnoreCase("KONFIG") ? "Konfig" :
+                        testnamn.equalsIgnoreCase("CONFIG") ? "Config" : testnamn);
 
-        // Format KONFIG data for ANALYS field
+        // Format data for ANALYS field
         String analys = String.format("ReqH: %s | ReqS: %s | VU: %s | Pacing: %s | Skript: %s",
                 reqH, reqS, vu, pacing, skript);
+
+        // Determine TYP field based on language
+        String typ = testnamn.equalsIgnoreCase("CONFIG") ? "CONFIG" : "KONFIG";
 
         String sql = "INSERT INTO PTLOG (DATUM, TYP, TESTNAMN, SYFTE, ANALYS, PROJEKT, TESTARE) VALUES (?, ?, ?, ?, ?, ?, ?)";
 
@@ -331,18 +359,18 @@ public class PtLog {
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setTimestamp(1, new Timestamp(System.currentTimeMillis()));
-            stmt.setString(2, "KONFIG");
-            stmt.setString(3, testnamn);
-            stmt.setString(4, "Konfig");
+            stmt.setString(2, typ);
+            stmt.setString(3, finalTestnamn);
+            stmt.setString(4, typ); // Use same value for SYFTE
             stmt.setString(5, analys);
             stmt.setString(6, projekt);
             stmt.setString(7, testare);
 
             stmt.executeUpdate();
-            logger.info("Inserted KONFIG: {} for project: {}", testnamn, projekt);
-            return ResponseEntity.ok("KONFIG added successfully with testnamn: " + testnamn);
+            logger.info("Inserted {}: {} for project: {}", typ, finalTestnamn, projekt);
+            return ResponseEntity.ok(typ + " added successfully with testnamn: " + finalTestnamn);
         } catch (SQLException e) {
-            logger.error("Failed to insert KONFIG: {}", e.getMessage());
+            logger.error("Failed to insert {}: {}", typ, e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Database error: " + e.getMessage());
         }
@@ -360,11 +388,12 @@ public class PtLog {
                     .body("Invalid JSON: " + e.getOriginalMessage());
         }
 
-        String projekt, beskrivning, testare;
+        String projekt, beskrivning, testare, testnamn;
         try {
             projekt = getRequiredField(node, "PROJEKT");
             beskrivning = getRequiredField(node, "BESKRIVNING");
             testare = node.has("TESTARE") ? node.get("TESTARE").asText() : "";
+            testnamn = node.has("TESTNAMN") ? node.get("TESTNAMN").asText() : "KONFIG";
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body("Missing required fields: " + e.getMessage());
@@ -380,7 +409,12 @@ public class PtLog {
         }
 
         String counterStr = String.format("%02d", count + 1);
-        String testnamn = counterStr + "_GEN_Konfig";
+        String finalTestnamn = counterStr + "_GEN_" +
+                (testnamn.equalsIgnoreCase("CONFIG") ? "Config" : "Konfig");
+
+        // Determine TYP and SYFTE based on language
+        String typ = testnamn.equalsIgnoreCase("CONFIG") ? "CONFIG" : "KONFIG";
+        String syfte = testnamn.equalsIgnoreCase("CONFIG") ? "General Config" : "Generell Konfig";
 
         TimeZone.setDefault(TimeZone.getTimeZone("Europe/Stockholm"));
 
@@ -389,22 +423,24 @@ public class PtLog {
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setTimestamp(1, new Timestamp(System.currentTimeMillis()));
-            stmt.setString(2, "KONFIG");
-            stmt.setString(3, testnamn);
-            stmt.setString(4, "Generell Konfig");
+            stmt.setString(2, typ);
+            stmt.setString(3, finalTestnamn);
+            stmt.setString(4, syfte);
             stmt.setString(5, beskrivning);
             stmt.setString(6, projekt);
             stmt.setString(7, testare);
 
             stmt.executeUpdate();
-            logger.info("Inserted Generell KONFIG: {} for project: {}", testnamn, projekt);
-            return ResponseEntity.ok("Generell KONFIG added successfully with testnamn: " + testnamn);
+            logger.info("Inserted {} {}: {} for project: {}", syfte, typ, finalTestnamn, projekt);
+            return ResponseEntity.ok(syfte + " added successfully with testnamn: " + finalTestnamn);
         } catch (SQLException e) {
-            logger.error("Failed to insert Generell KONFIG: {}", e.getMessage());
+            logger.error("Failed to insert {} {}: {}", syfte, typ, e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Database error: " + e.getMessage());
         }
     }
+
+
 
     @CrossOrigin(origins = "*")
     @PutMapping("/updateAnalys")
