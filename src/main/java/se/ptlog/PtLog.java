@@ -508,6 +508,52 @@ public class PtLog {
         return stats;
     }
 
+    @CrossOrigin(origins = "*")
+    @GetMapping("/dbinfo")
+    public ResponseEntity<Map<String, Object>> getDatabaseInfo() {
+        Map<String, Object> info = new LinkedHashMap<>();
+
+        try (Connection conn = dataSource.getConnection()) {
+            DatabaseMetaData metaData = conn.getMetaData();
+
+            // Basic database information
+            String productName = metaData.getDatabaseProductName();
+            String url = metaData.getURL();
+
+            // Determine database type
+            String dbType;
+            if (productName.toLowerCase().contains("oracle")) {
+                dbType = "Oracle";
+            } else if (productName.toLowerCase().contains("h2")) {
+                dbType = "H2";
+            } else {
+                dbType = productName;
+            }
+
+            // Populate response
+            info.put("type", dbType);
+            info.put("productName", productName);
+            info.put("schema", conn.getSchema());
+            info.put("url", maskPassword(url));
+
+            logger.info("Database info retrieved: {}", dbType);
+            return ResponseEntity.ok(info);
+
+        } catch (SQLException e) {
+            logger.error("Failed to retrieve database info: {}", e.getMessage());
+            info.put("error", "Failed to retrieve database information");
+            info.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(info);
+        }
+    }
+
+    // Helper method to mask passwords in connection URLs
+    private String maskPassword(String url) {
+        if (url == null) return null;
+        // Mask password in URLs like: jdbc:oracle:thin:user/password@host:port/service
+        return url.replaceAll("(/|:)[^/@:]+(@)", "$1****$2");
+    }
+
     private String getRequiredField(JsonNode node, String fieldName) {
         if (!node.hasNonNull(fieldName)) {
             throw new IllegalArgumentException(fieldName);
