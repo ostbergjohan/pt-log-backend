@@ -2,6 +2,8 @@
 The **PT-Log API** is a Spring Boot application that manages and tracks performance test logs for different projects.  
 It supports both **H2 file-based database** (for development/local deployments) and **Oracle database** (for production environments).
 
+This is the backend API for the [PT-Log Frontend](https://github.com/ostbergjohan/pt-log-front/).
+
 ---
 
 ## ✨ Features
