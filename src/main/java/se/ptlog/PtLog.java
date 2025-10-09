@@ -26,20 +26,27 @@ import com.zaxxer.hikari.HikariDataSource;
 @OpenAPIDefinition(
         info = @Info(
                 title = "PT-Log",
-                version = "v1",
+                version = "v2.0",
                 description = "PT-Log API to manage and track tests.\n" +
                         "Endpoints:\n" +
-                        "1. **GET /healthcheck** - API health.\n" +
-                        "2. **GET /getData?projekt={projekt}** - Retrieve logs.\n" +
-                        "3. **GET /populate** - List projects.\n" +
-                        "4. **POST /createProject** - Create project.\n" +
+                        "**Health**\n" +
+                        "1. **GET /healthcheck** - API health check.\n\n" +
+                        "**Active Projects**\n" +
+                        "2. **GET /populate** - List active projects (ARKIVERAD = 0).\n" +
+                        "3. **GET /getData?projekt={projekt}** - Retrieve test logs for a project.\n" +
+                        "4. **POST /createProject** - Create new project.\n" +
                         "5. **POST /insert** - Insert test log.\n" +
-                        "6. **PUT /updateAnalys** - Update analysis.\n" +
+                        "6. **PUT /updateAnalys** - Update analysis for a test.\n" +
                         "7. **POST /addKonfig** - Add pacing configuration.\n" +
                         "8. **POST /addGenerellKonfig** - Add general configuration.\n" +
-                        "9. **DELETE /deleteProject** - Delete project and all its tests.\n" +
-                        "10. **DELETE /deleteTest** - Delete specific test.\n" +
-                        "11. **GET /dbpool** - DB connection pool stats.\n"
+                        "9. **DELETE /deleteTest** - Delete specific test.\n\n" +
+                        "**Archived Projects**\n" +
+                        "10. **GET /populateArkiverade** - List archived projects (ARKIVERAD = 1).\n" +
+                        "11. **POST /arkivera?namn={namn}** - Archive a project.\n" +
+                        "12. **POST /restore?namn={namn}** - Restore archived project.\n" +
+                        "13. **DELETE /deleteProject** - Permanently delete project and all its tests.\n\n" +
+                        "**Monitoring**\n" +
+                        "14. **GET /dbpool** - Database connection pool statistics.\n"
         )
 )
 @SpringBootApplication(
