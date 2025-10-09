@@ -9,13 +9,13 @@ This is the backend API for the [PT-Log Frontend](https://github.com/ostbergjoha
 ## ✨ Features
 - 🔍 **Healthcheck** endpoint to verify service availability
 - 💾 **Dual database support** – H2 (file-based) or Oracle with simple configuration
-- 📂 **Project management** – create, list, and delete projects
+- 📂 **Project management** – create, list, archive, restore, and delete projects
+- 🗄️ **Archive system** – archive projects for later reference while keeping them accessible
 - 🧪 **Test logging** – insert structured test logs with automatic prefixes and counters
 - ⚙️ **Configuration management** – add pacing and general configurations with automatic numbering
 - 📝 **Analysis updates** – update `ANALYS` column for specific test entries
 - 🗑️ **Test deletion** – remove individual tests or entire projects
-- 📊 **Data retrieval** – fetch all tests for a given project
-- 🌍 **CORS enabled** – frontend (React) can interact seamlessly
+- 📊 **Data retrieval** – fetch all tests for a given project (active or archived)
 - 📖 **OpenAPI/Swagger** documentation via annotations
 - 📡 **Elastic APM** integration for monitoring
 - 🔗 **Connection pool monitoring** – view HikariCP statistics
@@ -113,7 +113,7 @@ The API will be available at:
 
 ---
 
-## 🔌 API Endpoints
+## 📌 API Endpoints
 
 ### Health
 - **`GET /healthcheck`** → Check if service is alive
@@ -124,8 +124,8 @@ The API will be available at:
   }
   ```
 
-### Projects
-- **`GET /populate`** → List all projects  
+### Projects (Active)
+- **`GET /populate`** → List all active projects (WHERE ARKIVERAD = 0)  
   Returns: `["Project1", "Project2", ...]`
 
 - **`POST /createProject`** → Create a new project  
@@ -135,7 +135,20 @@ The API will be available at:
   }
   ```
 
-- **`DELETE /deleteProject`** → Delete a project and all its tests  
+- **`GET /getData?projekt={name}`** → Fetch all logs for a project  
+  Returns formatted test data with columns: `DATUM`, `TYP`, `TESTNAMN`, `SYFTE`, `ANALYS`, `PROJEKT`, `TESTARE`
+
+### Projects (Archived)
+- **`GET /populateArkiverade`** → List all archived projects (WHERE ARKIVERAD = 1)  
+  Returns: `["ArchivedProject1", "ArchivedProject2", ...]`
+
+- **`POST /arkivera?namn={projectName}`** → Archive a project (set ARKIVERAD = 1)  
+  Archives the project, hiding it from the active list while keeping all data
+
+- **`POST /restore?namn={projectName}`** → Restore an archived project (set ARKIVERAD = 0)  
+  Restores the project back to the active list
+
+- **`DELETE /deleteProject`** → Permanently delete a project and all its tests  
   ```json
   {
     "Projekt": "ProjectName"
@@ -143,9 +156,6 @@ The API will be available at:
   ```
 
 ### Test Logs
-- **`GET /getData?projekt={name}`** → Fetch all logs for a project  
-  Returns formatted test data with columns: `DATUM`, `TYP`, `TESTNAMN`, `SYFTE`, `ANALYS`, `PROJEKT`, `TESTARE`
-
 - **`POST /insert`** → Insert a new test log  
   ```json
   {
@@ -224,7 +234,7 @@ The API will be available at:
 
 ---
 
-## 🏗️ Database Schema
+## 🗂️ Database Schema
 
 The application automatically creates the required schema on first run when using H2 (`h2.auto.init=true`) or Oracle (`oracle.auto.init=true`).
 
@@ -232,14 +242,16 @@ The application automatically creates the required schema on first run when usin
 **H2:**
 ```sql
 CREATE TABLE PTLOG_PROJEKT (
-  NAMN VARCHAR(255) PRIMARY KEY
+  NAMN VARCHAR(255) PRIMARY KEY,
+  ARKIVERAD INT DEFAULT 0 NOT NULL CHECK (ARKIVERAD IN (0, 1))
 );
 ```
 
 **Oracle:**
 ```sql
 CREATE TABLE PTLOG_PROJEKT (
-  NAMN VARCHAR2(255) PRIMARY KEY
+  NAMN VARCHAR2(255) PRIMARY KEY,
+  ARKIVERAD NUMBER(1) DEFAULT 0 NOT NULL CHECK (ARKIVERAD IN (0, 1))
 );
 ```
 
@@ -277,6 +289,34 @@ CREATE TABLE PTLOG (
     REFERENCES PTLOG_PROJEKT(NAMN) ON DELETE CASCADE
 );
 ```
+
+### Indexes (Oracle)
+```sql
+CREATE INDEX IDX_PTLOG_PROJEKT ON PTLOG(PROJEKT);
+CREATE INDEX IDX_PTLOG_DATUM ON PTLOG(DATUM DESC);
+CREATE INDEX IDX_PTLOG_TESTNAMN ON PTLOG(TESTNAMN);
+CREATE INDEX IDX_PTLOG_PROJEKT_ARKIVERAD ON PTLOG_PROJEKT(ARKIVERAD);
+```
+
+---
+
+## 🗄️ Archive System
+
+The archive system allows projects to be hidden from the main view while preserving all data:
+
+- **Archive Status**: Stored in `ARKIVERAD` column (0 = active, 1 = archived)
+- **Active Projects**: `WHERE ARKIVERAD = 0`
+- **Archived Projects**: `WHERE ARKIVERAD = 1`
+- **All Tests Preserved**: Archiving only affects project visibility, not test data
+- **Reversible**: Projects can be restored from archive at any time
+
+**Archive Workflow:**
+1. Archive a project → Sets `ARKIVERAD = 1`
+2. Project disappears from `/populate` endpoint
+3. Project appears in `/populateArkiverade` endpoint
+4. All tests remain accessible via `/getData?projekt={name}`
+5. Restore project → Sets `ARKIVERAD = 0`
+6. Project returns to active list
 
 ---
 
@@ -418,7 +458,7 @@ OpenAPI documentation is available at:
 
 ---
 
-## 🔐 Security Notes
+## 🔒 Security Notes
 
 - **Database credentials**: Store securely using environment variables or secrets management
 - **CORS**: Currently set to `origins = "*"` – restrict this in production
@@ -428,7 +468,7 @@ OpenAPI documentation is available at:
 
 ---
 
-## 🐛 Troubleshooting
+## 🛠 Troubleshooting
 
 ### H2 Database Issues
 
@@ -466,6 +506,17 @@ OpenAPI documentation is available at:
 **Database not persisting**
 - Verify volume is mounted: `docker inspect ptlog`
 - Check volume exists: `docker volume ls`
+
+### Archive Issues
+
+**Archived projects not appearing**
+- Verify `ARKIVERAD` column exists in `PTLOG_PROJEKT`
+- Check query: `SELECT * FROM PTLOG_PROJEKT WHERE ARKIVERAD = 1`
+- Ensure `/populateArkiverade` endpoint is implemented
+
+**Cannot restore project**
+- Verify `/restore` endpoint accepts POST with `namn` parameter
+- Check project exists: `SELECT * FROM PTLOG_PROJEKT WHERE NAMN = ?`
 
 ---
 
@@ -513,6 +564,13 @@ docker run -d -p 8080:8080 \
   --name ptlog \
   ptlog:latest
 ```
+
+
+---
+
+## 🔗 Related Projects
+
+- **Frontend**: [pt-log-front](https://github.com/ostbergjohan/pt-log-front)
 
 ---
 
