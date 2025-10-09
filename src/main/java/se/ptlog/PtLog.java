@@ -117,9 +117,50 @@ public class PtLog {
     }
 
     @CrossOrigin(origins = "*")
+    @PostMapping("/restore")
+    public void restoreProjekt(@RequestParam String namn) throws SQLException {
+        String sql = "UPDATE PTLOG_PROJEKT SET ARKIVERAD = 0 WHERE NAMN = ?";
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, namn);
+            pstmt.executeUpdate();
+        }
+    }
+    @CrossOrigin(origins = "*")
     @GetMapping("/populate")
     public List<String> getAllProjekts() throws SQLException {
-        String sql = "SELECT DISTINCT NAMN FROM PTLOG_PROJEKT ORDER BY NAMN";
+        String sql = "SELECT DISTINCT NAMN " +
+                "FROM PTLOG_PROJEKT " +
+                "WHERE ARKIVERAD = 0 " +
+                "ORDER BY NAMN";
+        List<String> projekts = new ArrayList<>();
+        try (Connection conn = dataSource.getConnection();
+             Statement st = conn.createStatement();
+             ResultSet rs = st.executeQuery(sql)) {
+            while (rs.next()) {
+                projekts.add(rs.getString("NAMN"));
+            }
+        }
+        return projekts;
+    }
+    @CrossOrigin(origins = "*")
+    @PostMapping("/arkivera")
+    public void arkiveraProjekt(@RequestParam String namn) throws SQLException {
+        String sql = "UPDATE PTLOG_PROJEKT SET ARKIVERAD = 1 WHERE NAMN = ?";
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, namn);
+            pstmt.executeUpdate();
+        }
+    }
+
+    @CrossOrigin(origins = "*")
+    @GetMapping("/populateArkiverade")
+    public List<String> getArkiveradeProjekts() throws SQLException {
+        String sql = "SELECT DISTINCT NAMN " +
+                "FROM PTLOG_PROJEKT " +
+                "WHERE ARKIVERAD = 1 " +
+                "ORDER BY NAMN";
         List<String> projekts = new ArrayList<>();
         try (Connection conn = dataSource.getConnection();
              Statement st = conn.createStatement();
