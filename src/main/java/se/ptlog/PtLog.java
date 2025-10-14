@@ -324,30 +324,16 @@ public class PtLog {
     }
 
     private String getTestTypePrefix(String typ) {
-        // Support both English keys and Swedish full names
-        switch (typ.toLowerCase()) {
-            case "reference":
-            case "referenstest":
-                return "REF";
-            case "verification":
-            case "verifikationstest":
-                return "VER";
-            case "load":
-            case "belastningstest":
-                return "BEL";
-            case "endurance":
-            case "utmattningstest":
-                return "UTM";
-            case "max":
-            case "maxtest":
-                return "MAX";
-            case "create":
-            case "skapa":
-                return "SKA";
-            default:
-                logger.warn("Unknown test type: {}, defaulting to REF", typ);
-                return "REF";
+        if (typ == null || typ.isEmpty()) {
+            logger.warn("Empty test type, defaulting to REF");
+            return "REF";
         }
+
+        String prefix = typ.length() >= 3
+                ? typ.substring(0, 3).toUpperCase()
+                : typ.toUpperCase();
+
+        return prefix;
     }
 
     @CrossOrigin(origins = "*")
