@@ -28,7 +28,7 @@ import com.zaxxer.hikari.HikariDataSource;
 @OpenAPIDefinition(
         info = @Info(
                 title = "PT-Log",
-                version = "v2.0",
+                version = "v2.1",
                 description = "PT-Log API to manage and track tests.\n" +
                         "Endpoints:\n" +
                         "**Health**\n" +
@@ -36,19 +36,23 @@ import com.zaxxer.hikari.HikariDataSource;
                         "**Active Projects**\n" +
                         "2. **GET /populate** - List active projects (ARKIVERAD = 0).\n" +
                         "3. **GET /getData?projekt={projekt}** - Retrieve test logs for a project.\n" +
-                        "4. **POST /createProject** - Create new project.\n" +
-                        "5. **POST /insert** - Insert test log.\n" +
-                        "6. **PUT /updateAnalys** - Update analysis for a test.\n" +
-                        "7. **POST /addKonfig** - Add pacing configuration.\n" +
-                        "8. **POST /addGenerellKonfig** - Add general configuration.\n" +
-                        "9. **DELETE /deleteTest** - Delete specific test.\n\n" +
+                        "4. **POST /createProject** - Create new project with optional description.\n" +
+                        "5. **GET /getProjectInfo?projekt={projekt}** - Get project info including description.\n" +
+                        "6. **GET /getAllProjectsWithInfo** - Get all projects with descriptions.\n" +
+                        "7. **PUT /updateProjectBeskrivning** - Update project description.\n" +
+                        "8. **POST /insert** - Insert test log.\n" +
+                        "9. **PUT /updateAnalys** - Update analysis for a test.\n" +
+                        "10. **POST /addKonfig** - Add pacing configuration.\n" +
+                        "11. **POST /addGenerellKonfig** - Add general configuration.\n" +
+                        "12. **DELETE /deleteTest** - Delete specific test.\n\n" +
                         "**Archived Projects**\n" +
-                        "10. **GET /populateArkiverade** - List archived projects (ARKIVERAD = 1).\n" +
-                        "11. **POST /arkivera?namn={namn}** - Archive a project.\n" +
-                        "12. **POST /restore?namn={namn}** - Restore archived project.\n" +
-                        "13. **DELETE /deleteProject** - Permanently delete project and all its tests.\n\n" +
+                        "13. **GET /populateArkiverade** - List archived projects (ARKIVERAD = 1).\n" +
+                        "14. **POST /arkivera?namn={namn}** - Archive a project.\n" +
+                        "15. **POST /restore?namn={namn}** - Restore archived project.\n" +
+                        "16. **DELETE /deleteProject** - Permanently delete project and all its tests.\n\n" +
                         "**Monitoring**\n" +
-                        "14. **GET /dbpool** - Database connection pool statistics.\n"
+                        "17. **GET /dbpool** - Database connection pool statistics.\n" +
+                        "18. **GET /dbinfo** - Database information.\n"
         ),
         externalDocs = @ExternalDocumentation(
                 description = "GitHub Repository",
@@ -112,6 +116,66 @@ public class PtLog {
         }
     }
 
+    @CrossOrigin(origins = "*")
+    @GetMapping("/getProjectInfo")
+    public ResponseEntity<Map<String, Object>> getProjectInfo(@RequestParam String projekt) {
+        String sql = "SELECT NAMN, BESKRIVNING, ARKIVERAD FROM PTLOG_PROJEKT WHERE NAMN = ?";
+
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, projekt);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    Map<String, Object> projectInfo = new LinkedHashMap<>();
+                    projectInfo.put("namn", rs.getString("NAMN"));
+                    projectInfo.put("beskrivning", rs.getString("BESKRIVNING"));
+                    projectInfo.put("arkiverad", rs.getInt("ARKIVERAD"));
+
+                    logger.info("Retrieved info for project: {}", projekt);
+                    return ResponseEntity.ok(projectInfo);
+                } else {
+                    return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                            .body(Map.of("error", "Project not found: " + projekt));
+                }
+            }
+        } catch (SQLException e) {
+            logger.error("Failed to get project info: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Database error: " + e.getMessage()));
+        }
+    }
+
+    // 4. Optional: Get all projects with their descriptions
+    @CrossOrigin(origins = "*")
+    @GetMapping("/getAllProjectsWithInfo")
+    public ResponseEntity<List<Map<String, Object>>> getAllProjectsWithInfo(@RequestParam(defaultValue = "false") boolean includeArchived) {
+        String sql = "SELECT NAMN, BESKRIVNING, ARKIVERAD FROM PTLOG_PROJEKT " +
+                (includeArchived ? "" : "WHERE ARKIVERAD = 0 ") +
+                "ORDER BY NAMN";
+
+        List<Map<String, Object>> projects = new ArrayList<>();
+
+        try (Connection conn = dataSource.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+
+            while (rs.next()) {
+                Map<String, Object> project = new LinkedHashMap<>();
+                project.put("namn", rs.getString("NAMN"));
+                project.put("beskrivning", rs.getString("BESKRIVNING"));
+                project.put("arkiverad", rs.getInt("ARKIVERAD"));
+                projects.add(project);
+            }
+
+            logger.info("Retrieved {} projects with info", projects.size());
+            return ResponseEntity.ok(projects);
+        } catch (SQLException e) {
+            logger.error("Failed to get projects with info: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(null);
+        }
+    }
     @CrossOrigin(origins = "*")
     @GetMapping("/getData")
     public List<Map<String, Object>> getData(@RequestParam String projekt) throws SQLException {
@@ -260,16 +324,20 @@ public class PtLog {
     @PostMapping("/createProject")
     public ResponseEntity<String> createProject(@RequestBody Map<String, String> payload) {
         String projektName = payload.get("Projekt");
+        String beskrivning = payload.get("Beskrivning"); // Get description from payload
+
         if (projektName == null || projektName.trim().isEmpty()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body("Projekt name is required");
         }
 
-        String sql = "INSERT INTO PTLOG_PROJEKT (NAMN) VALUES (?)";
+        String sql = "INSERT INTO PTLOG_PROJEKT (NAMN, BESKRIVNING) VALUES (?, ?)";
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, projektName.trim());
+            stmt.setString(2, beskrivning != null ? beskrivning.trim() : ""); // Handle null description
             int rows = stmt.executeUpdate();
+            logger.info("Created project: {} with description", projektName);
             return ResponseEntity.ok("Inserted project: " + projektName + " (" + rows + " row(s))");
         } catch (SQLException e) {
             logger.error("Database error", e);
@@ -277,6 +345,7 @@ public class PtLog {
                     .body("Database error: " + e.getMessage());
         }
     }
+
 
     public int countRowsForProject(String projekt) throws SQLException {
         String sql = "SELECT COUNT(*) AS CNT FROM ptlog WHERE PROJEKT = ?";
@@ -293,6 +362,47 @@ public class PtLog {
         }
         logger.info("Project '{}' has 0 rows", projekt);
         return 0;
+    }
+
+    @CrossOrigin(origins = "*")
+    @PutMapping("/updateProjectBeskrivning")
+    public ResponseEntity<String> updateProjectBeskrivning(@RequestBody String json) {
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode node;
+        try {
+            node = objectMapper.readTree(json);
+        } catch (JsonProcessingException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Invalid JSON: " + e.getOriginalMessage());
+        }
+
+        String projektName, beskrivning;
+        try {
+            projektName = getRequiredField(node, "Projekt");
+            beskrivning = getRequiredField(node, "Beskrivning");
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Missing required field: " + e.getMessage());
+        }
+
+        String sql = "UPDATE PTLOG_PROJEKT SET BESKRIVNING = ? WHERE NAMN = ?";
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, beskrivning.trim());
+            stmt.setString(2, projektName.trim());
+
+            int rows = stmt.executeUpdate();
+            if (rows == 0) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body("No project found with name: " + projektName);
+            }
+            logger.info("Updated description for project: {}", projektName);
+            return ResponseEntity.ok("Updated description for project: " + projektName);
+        } catch (SQLException e) {
+            logger.error("Failed to update project description: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Database error: " + e.getMessage());
+        }
     }
 
     @CrossOrigin(origins = "*")
