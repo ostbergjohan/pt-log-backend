@@ -3,7 +3,9 @@ package se.ptlog;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.swagger.v3.oas.annotations.ExternalDocumentation;
 import io.swagger.v3.oas.annotations.OpenAPIDefinition;
+import io.swagger.v3.oas.annotations.info.Contact;
 import io.swagger.v3.oas.annotations.info.Info;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,6 +49,10 @@ import com.zaxxer.hikari.HikariDataSource;
                         "13. **DELETE /deleteProject** - Permanently delete project and all its tests.\n\n" +
                         "**Monitoring**\n" +
                         "14. **GET /dbpool** - Database connection pool statistics.\n"
+        ),
+        externalDocs = @ExternalDocumentation(
+                description = "GitHub Repository",
+                url = "https://github.com/ostbergjohan/pt-log-backend"
         )
 )
 @SpringBootApplication(
@@ -76,9 +82,34 @@ public class PtLog {
         HttpHeaders headers = new HttpHeaders();
         headers.add(HttpHeaders.CACHE_CONTROL, "no-cache");
         headers.add(HttpHeaders.CONTENT_TYPE, "application/json; charset=UTF-8");
-        return ResponseEntity.ok()
-                .headers(headers)
-                .body("{\"status\":\"ok\",\"service\":\"API Health Check\"}");
+
+        // Check database connectivity
+        try (Connection conn = dataSource.getConnection();
+             Statement stmt = conn.createStatement()) {
+
+            // Execute a simple query to verify database is responsive
+            // "SELECT 1 FROM DUAL" works for Oracle, "SELECT 1" works for H2
+            String testQuery = "SELECT 1 FROM DUAL";
+            try {
+                stmt.executeQuery(testQuery);
+            } catch (SQLException e) {
+                // If Oracle syntax fails, try H2 syntax
+                testQuery = "SELECT 1";
+                stmt.executeQuery(testQuery);
+            }
+
+            logger.info("Health check passed: API and database are healthy");
+            return ResponseEntity.ok()
+                    .headers(headers)
+                    .body("{\"status\":\"ok\",\"service\":\"API Health Check\",\"database\":\"connected\"}");
+
+        } catch (SQLException e) {
+            logger.error("Health check failed: Database connection error - {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .headers(headers)
+                    .body("{\"status\":\"error\",\"service\":\"API Health Check\",\"database\":\"disconnected\",\"error\":\"" +
+                            e.getMessage().replace("\"", "'") + "\"}");
+        }
     }
 
     @CrossOrigin(origins = "*")

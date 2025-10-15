@@ -29,9 +29,20 @@
         h1 {
             margin-top: 0;
         }
+        h3 {
+            color: #4a90e2;
+            margin-top: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+        .intro {
+            background: #e8f4f8;
+            padding: 1rem;
+            border-radius: 5px;
+            margin-bottom: 1.5rem;
+        }
         a.button {
             display: inline-block;
-            margin: 1rem 0;
+            margin: 0.5rem 0.5rem 0.5rem 0;
             padding: 0.75rem 1.5rem;
             background: #4a90e2;
             color: white;
@@ -41,9 +52,28 @@
         a.button:hover {
             background: #357ABD;
         }
-        ul {
-            line-height: 1.6;
+        a.button.github {
+            background: #24292e;
         }
+        a.button.github:hover {
+            background: #000;
+        }
+        ul {
+            line-height: 1.8;
+            margin-top: 0.5rem;
+        }
+        .method {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            margin-right: 0.5rem;
+        }
+        .get { background: #61affe; color: white; }
+        .post { background: #49cc90; color: white; }
+        .put { background: #fca130; color: white; }
+        .delete { background: #f93e3e; color: white; }
         footer {
             text-align: center;
             margin: 2rem 0;
@@ -54,20 +84,51 @@
 </head>
 <body>
 <header>
-    <h1>PT-Log API</h1>
+    <h1>PT-Log API Backend</h1>
     <p>Manage and track test projects easily.</p>
 </header>
 <main>
+    <div class="intro">
+        <p><strong>This is the backend API</strong> for the PT-Log application. It provides RESTful endpoints to manage test projects, logs, and configurations. The frontend application consumes this API to provide a user-friendly interface.</p>
+    </div>
+
     <h2>Available Endpoints</h2>
+
+    <h3>Health</h3>
     <ul>
-        <li><strong>GET /healthcheck</strong> - Check API status.</li>
-        <li><strong>GET /getData?projekt={projekt}</strong> - Get all test logs for a project.</li>
-        <li><strong>GET /populate</strong> - List all project names.</li>
-        <li><strong>POST /createProject</strong> - Create a new project.</li>
-        <li><strong>POST /insert</strong> - Insert a new test log.</li>
-        <li><strong>PUT /updateAnalys</strong> - Update the ANALYS field for a test log.</li>
+        <li><span class="method get">GET</span><strong>/healthcheck</strong> - API health check.</li>
     </ul>
+
+    <h3>Active Projects</h3>
+    <ul>
+        <li><span class="method get">GET</span><strong>/populate</strong> - List active projects (ARKIVERAD = 0).</li>
+        <li><span class="method get">GET</span><strong>/getData?projekt={projekt}</strong> - Retrieve test logs for a project.</li>
+        <li><span class="method post">POST</span><strong>/createProject</strong> - Create new project.</li>
+        <li><span class="method post">POST</span><strong>/insert</strong> - Insert test log.</li>
+        <li><span class="method put">PUT</span><strong>/updateAnalys</strong> - Update analysis for a test.</li>
+        <li><span class="method post">POST</span><strong>/addKonfig</strong> - Add pacing configuration.</li>
+        <li><span class="method post">POST</span><strong>/addGenerellKonfig</strong> - Add general configuration.</li>
+        <li><span class="method delete">DELETE</span><strong>/deleteTest</strong> - Delete specific test.</li>
+    </ul>
+
+    <h3>Archived Projects</h3>
+    <ul>
+        <li><span class="method get">GET</span><strong>/populateArkiverade</strong> - List archived projects (ARKIVERAD = 1).</li>
+        <li><span class="method post">POST</span><strong>/arkivera?namn={namn}</strong> - Archive a project.</li>
+        <li><span class="method post">POST</span><strong>/restore?namn={namn}</strong> - Restore archived project.</li>
+        <li><span class="method delete">DELETE</span><strong>/deleteProject</strong> - Permanently delete project and all its tests.</li>
+    </ul>
+
+    <h3>Monitoring</h3>
+    <ul>
+        <li><span class="method get">GET</span><strong>/dbpool</strong> - Database connection pool statistics.</li>
+    </ul>
+
+    <h2>Resources</h2>
     <a class="button" href="/swagger-ui.html" target="_blank">View API Documentation</a>
+    <br>
+    <a class="button github" href="https://github.com/ostbergjohan/pt-log-backend" target="_blank">Backend GitHub</a>
+    <a class="button github" href="https://github.com/ostbergjohan/pt-log-front" target="_blank">Frontend GitHub</a>
 </main>
 <footer>
     &copy; 2025 PT-Log
