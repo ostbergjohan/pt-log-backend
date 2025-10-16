@@ -758,6 +758,49 @@ public class PtLog {
         }
     }
 
+    @CrossOrigin(origins = "*")
+    @PutMapping("/updateSyfte")
+    public ResponseEntity<String> updateSyfte(@RequestBody String json) {
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode node;
+        try {
+            node = objectMapper.readTree(json);
+        } catch (JsonProcessingException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Invalid JSON: " + e.getOriginalMessage());
+        }
+
+        String projekt, testnamn, syfte;
+        try {
+            projekt = getRequiredField(node, "Projekt");
+            testnamn = getRequiredField(node, "Testnamn");
+            syfte = getRequiredField(node, "Syfte");
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Missing required field: " + e.getMessage());
+        }
+
+        String sql = "UPDATE PTLOG SET SYFTE = ? WHERE PROJEKT = ? AND TESTNAMN = ?";
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, syfte);
+            stmt.setString(2, projekt);
+            stmt.setString(3, testnamn);
+
+            int rows = stmt.executeUpdate();
+            if (rows == 0) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body("No row found with Projekt: " + projekt + " and Testnamn: " + testnamn);
+            }
+            logger.info("Updated purpose for test: {} in project: {}", testnamn, projekt);
+            return ResponseEntity.ok("Updated " + rows + " row(s)");
+        } catch (SQLException e) {
+            logger.error("Failed to update purpose: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Database error: " + e.getMessage());
+        }
+    }
+
     // Helper method to mask passwords in connection URLs
     private String maskPassword(String url) {
         if (url == null) return null;
