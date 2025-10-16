@@ -181,7 +181,7 @@ public class PtLog {
     public List<Map<String, Object>> getData(@RequestParam String projekt) throws SQLException {
         String sql = "SELECT " +
                 "TO_CHAR(DATUM, 'YYYY-MM-DD HH24:MI') AS DATUM, " +
-                "TYP, TESTNAMN, SYFTE, ANALYS, PROJEKT, TESTARE " +
+                "TYP, TESTNAMN, SYFTE, ANALYS, PROJEKT, TESTARE, MARKERA " +
                 "FROM ptlog WHERE PROJEKT = ? ORDER BY DATUM DESC";
         return OraSQL(sql, projekt);
     }
@@ -796,6 +796,50 @@ public class PtLog {
             return ResponseEntity.ok("Updated " + rows + " row(s)");
         } catch (SQLException e) {
             logger.error("Failed to update purpose: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Database error: " + e.getMessage());
+        }
+    }
+
+    @CrossOrigin(origins = "*")
+    @PutMapping("/updateMarkera")
+    public ResponseEntity<String> updateMarkera(@RequestBody String json) {
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode node;
+        try {
+            node = objectMapper.readTree(json);
+        } catch (JsonProcessingException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Invalid JSON: " + e.getOriginalMessage());
+        }
+
+        String projekt, testnamn;
+        int markera;
+        try {
+            projekt = getRequiredField(node, "Projekt");
+            testnamn = getRequiredField(node, "Testnamn");
+            markera = node.get("Markera").asInt();
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Missing required fields: " + e.getMessage());
+        }
+
+        String sql = "UPDATE PTLOG SET MARKERA = ? WHERE PROJEKT = ? AND TESTNAMN = ?";
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, markera);
+            stmt.setString(2, projekt);
+            stmt.setString(3, testnamn);
+
+            int rows = stmt.executeUpdate();
+            if (rows == 0) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body("No row found with Projekt: " + projekt + " and Testnamn: " + testnamn);
+            }
+            logger.info("Updated markera to {} for test: {} in project: {}", markera, testnamn, projekt);
+            return ResponseEntity.ok("Updated " + rows + " row(s)");
+        } catch (SQLException e) {
+            logger.error("Failed to update markera: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Database error: " + e.getMessage());
         }
